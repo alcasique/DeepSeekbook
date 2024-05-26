@@ -1,17 +1,17 @@
 import streamlit as st
-from groq import Groq
+from openai import OpenAI
 import json
 import os
 from io import BytesIO
 
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", None)
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", None)
 
 if 'api_key' not in st.session_state:
-    st.session_state.api_key = GROQ_API_KEY
+    st.session_state.api_key = DEEPSEEK_API_KEY
 
-if 'groq' not in st.session_state:
-    if GROQ_API_KEY:
-        st.session_state.groq = Groq()
+if 'deepseek' not in st.session_state:
+    if DEEPSEEK_API_KEY:
+        st.session_state.deepseek = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
 
 class Book:
     def __init__(self, structure):
@@ -80,7 +80,7 @@ class Book:
 
 def create_markdown_file(content: str) -> BytesIO:
     """
-    Create a Markdown file from the provided content.
+    Cree un archivo Markdown a partir del contenido proporcionado.
     """
     markdown_file = BytesIO()
     markdown_file.write(content.encode('utf-8'))
@@ -88,50 +88,47 @@ def create_markdown_file(content: str) -> BytesIO:
     return markdown_file
 
 def generate_book_structure(prompt: str):
-    completion = st.session_state.groq.chat.completions.create(
-        model="llama3-70b-8192",
+    completion = st.session_state.deepseek.chat.completions.create(
+        model="deepseek-chat",
         messages=[
             {
                 "role": "system",
-                "content": "Write in JSON format:\n\n{\"Title of section goes here\":\"Description of section goes here\",\n\"Title of section goes here\":{\"Title of section goes here\":\"Description of section goes here\",\"Title of section goes here\":\"Description of section goes here\",\"Title of section goes here\":\"Description of section goes here\"}}"
+                "content": "Escribe en formato JSON:\n\n{\"El título de la sección va aquí\":\"La descripción de la sección va aquí\",\n\"El título de la sección va aquí\":{\"El título de la sección va aquí\" aquí\":\"La descripción de la sección va aquí\",\"El título de la sección va aquí\":\"La descripción de la sección va aquí\",\"El título de la sección va aquí\":\"La descripción de la sección va aquí aquí\"}}"
             },
             {
                 "role": "user",
-                "content": f"Write a comprehensive structure, omiting introduction and conclusion sections (forward, author's note, summary), for a long (>300 page) book on the following subject:\n\n<subject>{prompt}</subject>"
+                "content": f"Escriba una estructura integral, omitiendo las secciones de introducción y conclusión (adelante, nota del autor, resumen), para un libro extenso (>300 páginas) sobre el siguiente tema:\n\n<subject>{prompt}</subject>"
             }
         ],
         temperature=0.3,
-        max_tokens=8000,
+        max_tokens=130000,
         top_p=1,
-        stream=False,
-        response_format={"type": "json_object"},
-        stop=None,
+        stream=False
     )
 
-    return completion.choices[0].message.content
+    return completion.choices[0].message["content"]
 
 def generate_section(prompt: str):
-    stream = st.session_state.groq.chat.completions.create(
-        model="llama3-8b-8192",
+    stream = st.session_state.deepseek.chat.completions.create(
+        model="deepseek-chat",
         messages=[
             {
                 "role": "system",
-                "content": "You are an expert writer. Generate a long, comprehensive, structured chapter for the section provided."
+                "content": "Eres un escritor experto, escribes los libros en español. Genere un capítulo largo, completo y estructurado para la sección proporcionada."
             },
             {
                 "role": "user",
-                "content": f"Generate a long, comprehensive, structured chapter for the following section:\n\n<section_title>{prompt}</section_title>"
+                "content": f"Genere un capítulo largo, completo y estructurado para la siguiente sección:\n\n<section_title>{prompt}</section_title>"
             }
         ],
         temperature=0.3,
         max_tokens=8000,
         top_p=1,
-        stream=True,
-        stop=None,
+        stream=True
     )
 
     for chunk in stream:
-        resulting_tokens = chunk.choices[0].delta.content
+        resulting_tokens = chunk.choices[0].delta["content"]
         yield resulting_tokens
 
 # Initialize
@@ -142,7 +139,7 @@ if 'button_text' not in st.session_state:
     st.session_state.button_text = "Generate"
 
 st.write("""
-# Groqbook: Write full books using llama3 (8b and 70b) on Groq
+# DeepSeekBook: Escribe libros completos usando DeepSeek
 """)
 
 def disable():
@@ -165,25 +162,25 @@ try:
                 mime='text/plain'
             )
         else:
-            raise ValueError("Please generate content first before downloading the book.")
+            raise ValueError("Primero genere contenido antes de descargar el libro.")
 
-    with st.form("groqform"):
-        if not GROQ_API_KEY:
-            groq_input_key = st.text_input("Enter your Groq API Key (gsk_yA...):", "",type="password")
+    with st.form("deepseekform"):
+        if not DEEPSEEK_API_KEY:
+            deepseek_input_key = st.text_input("Enter your DeepSeek API Key (dsk_yA...):", "", type="password")
 
-        topic_text = st.text_input("What do you want the book to be about?", "")
+        topic_text = st.text_input("¿De qué quieres que trate el libro?", "")
 
-        submitted = st.form_submit_button(st.session_state.button_text,on_click=disable,disabled=st.session_state.button_disabled)
+        submitted = st.form_submit_button(st.session_state.button_text, on_click=disable, disabled=st.session_state.button_disabled)
 
         if submitted:
-            if len(topic_text)<10:
+            if len(topic_text) < 10:
                 raise ValueError("Book topic must be at least 10 characters long")
 
             st.session_state.button_disabled = True
             st.write("Generating structure in background....")
 
-            if not GROQ_API_KEY:
-                st.session_state.groq = Groq(api_key=groq_input_key)
+            if not DEEPSEEK_API_KEY:
+                st.session_state.deepseek = OpenAI(api_key=deepseek_input_key, base_url="https://api.deepseek.com")
 
             book_structure = generate_book_structure(topic_text)
             
@@ -194,15 +191,12 @@ try:
                 if 'book' not in st.session_state:
                     st.session_state.book = book
 
-                # Print the book structure to the terminal for debugging purposes
-                print(json.dumps(book_structure_json, indent=2))
-
                 st.session_state.book.display_structure()
 
                 def stream_section_content(sections):
                     for title, content in sections.items():
                         if isinstance(content, str):
-                            content_stream = generate_section(title+": "+content)
+                            content_stream = generate_section(title + ": " + content)
                             for chunk in content_stream:
                                 st.session_state.book.update_content(title, chunk)
                         elif isinstance(content, dict):
@@ -211,7 +205,7 @@ try:
                 stream_section_content(book_structure_json)
             
             except json.JSONDecodeError:
-                st.error("Failed to decode the book structure. Please try again.")
+                st.error("No se pudo decodificar la estructura del libro. Inténtalo de nuevo.")
 
             enable()
 
